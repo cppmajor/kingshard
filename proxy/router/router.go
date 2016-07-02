@@ -293,19 +293,37 @@ func (r *Router) buildSelectPlan(statement sqlparser.Statement) (*Plan, error) {
 	switch v := (stmt.From[0]).(type) {
 	case *sqlparser.AliasedTableExpr:
 		tableName = sqlparser.String(v.Expr)
+		plan.Rule = r.GetRule(tableName) //根据表名获得分表规则
 	case *sqlparser.JoinTableExpr:
+		var leftTable, rightTable string
 		if ate, ok := (v.LeftExpr).(*sqlparser.AliasedTableExpr); ok {
-			tableName = sqlparser.String(ate.Expr)
+			leftTable = sqlparser.String(ate.Expr)
 		} else {
-			tableName = sqlparser.String(v)
+			leftTable = sqlparser.String(v)
 		}
+		//get right table
+		if ate, ok := (v.RightExpr).(*sqlparser.AliasedTableExpr); ok {
+			rightTable = sqlparser.String(ate.Expr)
+		} else {
+			rightTable = sqlparser.String(v)
+		}
+		leftRule := r.GetRule(leftTable)
+		rightRule := r.GetRule(rightTable)
+		//not support two shard tables in join operation
+		if leftRule != r.DefaultRule && rightRule != r.DefaultRule {
+			return nil, errors.ErrJoinMultiTables
+		} else if leftRule == r.DefaultRule {
+			plan.Rule = rightRule
+		} else {
+			plan.Rule = leftRule
+		}
+
 	default:
 		tableName = sqlparser.String(v)
+		plan.Rule = r.GetRule(tableName) //根据表名获得分表规则
 	}
 
-	plan.Rule = r.GetRule(tableName) //根据表名获得分表规则
 	where = stmt.Where
-
 	if where != nil {
 		plan.Criteria = where.Expr //路由条件
 		err = plan.calRouteIndexs()
@@ -536,56 +554,7 @@ func (r *Router) rewriteSelectSql(plan *Plan, node *sqlparser.Select, tableIndex
 		}
 	}
 	buf.Fprintf(" from ")
-	switch v := (node.From[0]).(type) {
-	case *sqlparser.AliasedTableExpr:
-		if len(v.As) != 0 {
-			fmt.Fprintf(buf, "%s_%04d as %s",
-				sqlparser.String(v.Expr),
-				tableIndex,
-				string(v.As),
-			)
-		} else {
-			fmt.Fprintf(buf, "%s_%04d",
-				sqlparser.String(v.Expr),
-				tableIndex,
-			)
-		}
-	case *sqlparser.JoinTableExpr:
-		if ate, ok := (v.LeftExpr).(*sqlparser.AliasedTableExpr); ok {
-			if len(ate.As) != 0 {
-				fmt.Fprintf(buf, "%s_%04d as %s",
-					sqlparser.String(ate.Expr),
-					tableIndex,
-					string(ate.As),
-				)
-			} else {
-				fmt.Fprintf(buf, "%s_%04d",
-					sqlparser.String(ate.Expr),
-					tableIndex,
-				)
-			}
-		} else {
-			fmt.Fprintf(buf, "%s_%04d",
-				sqlparser.String(v.LeftExpr),
-				tableIndex,
-			)
-		}
-		buf.Fprintf(" %s %v", v.Join, v.RightExpr)
-		if v.On != nil {
-			buf.Fprintf(" on %v", v.On)
-		}
-	default:
-		fmt.Fprintf(buf, "%s_%04d",
-			sqlparser.String(node.From[0]),
-			tableIndex,
-		)
-	}
-	//append other tables
-	prefix = ", "
-	for i := 1; i < len(node.From); i++ {
-		buf.Fprintf("%s%v", prefix, node.From[i])
-	}
-
+	buf = r.generateFromTable(plan, node.From, buf, tableIndex)
 	newLimit, err := node.Limit.RewriteLimit()
 	if err != nil {
 		//do not change limit
@@ -600,6 +569,90 @@ func (r *Router) rewriteSelectSql(plan *Plan, node *sqlparser.Select, tableIndex
 		node.Lock,
 	)
 	return buf.String()
+}
+
+func (r *Router) generateFromTable(plan *Plan, from sqlparser.TableExprs,
+	buf *sqlparser.TrackedBuffer, tableIndex int) *sqlparser.TrackedBuffer {
+	//node.From
+	switch v := from[0].(type) {
+	case *sqlparser.AliasedTableExpr:
+		if len(v.As) != 0 {
+			fmt.Fprintf(buf, "%s_%04d as %s",
+				sqlparser.String(v.Expr),
+				tableIndex,
+				string(v.As),
+			)
+		} else {
+			fmt.Fprintf(buf, "%s_%04d",
+				sqlparser.String(v.Expr),
+				tableIndex,
+			)
+		}
+	case *sqlparser.JoinTableExpr:
+		var leftTable string
+		if ate, ok := (v.LeftExpr).(*sqlparser.AliasedTableExpr); ok {
+			leftTable = sqlparser.String(ate.Expr)
+		} else {
+			leftTable = sqlparser.String(v)
+		}
+		//rewrite left table
+		if plan.Rule.Table == leftTable {
+			if ate, ok := (v.LeftExpr).(*sqlparser.AliasedTableExpr); ok {
+				if len(ate.As) != 0 {
+					fmt.Fprintf(buf, "%s_%04d as %s",
+						sqlparser.String(ate.Expr),
+						tableIndex,
+						string(ate.As),
+					)
+				} else {
+					fmt.Fprintf(buf, "%s_%04d",
+						sqlparser.String(ate.Expr),
+						tableIndex,
+					)
+				}
+			} else {
+				fmt.Fprintf(buf, "%s_%04d",
+					sqlparser.String(v.LeftExpr),
+					tableIndex,
+				)
+			}
+			buf.Fprintf(" %s %v", v.Join, v.RightExpr)
+		} else {
+			buf.Fprintf(" %v%v ", v.LeftExpr, v.Join)
+			if ate, ok := (v.RightExpr).(*sqlparser.AliasedTableExpr); ok {
+				if len(ate.As) != 0 {
+					fmt.Fprintf(buf, "%s_%04d as %s",
+						sqlparser.String(ate.Expr),
+						tableIndex,
+						string(ate.As),
+					)
+				} else {
+					fmt.Fprintf(buf, "%s_%04d",
+						sqlparser.String(ate.Expr),
+						tableIndex,
+					)
+				}
+			} else {
+				fmt.Fprintf(buf, "%s_%04d",
+					sqlparser.String(v.LeftExpr),
+					tableIndex,
+				)
+			}
+		}
+
+		buf.Fprintf(" on %v", v.On)
+	default:
+		fmt.Fprintf(buf, "%s_%04d",
+			sqlparser.String(from[0]),
+			tableIndex,
+		)
+	}
+	//append other tables
+	prefix := ", "
+	for i := 1; i < len(from); i++ {
+		buf.Fprintf("%s%v", prefix, from[i])
+	}
+	return buf
 }
 
 func (r *Router) generateSelectSql(plan *Plan, stmt sqlparser.Statement) error {

@@ -18,14 +18,13 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/flike/kingshard/core/yaml"
+	"gopkg.in/yaml.v2"
 )
 
 //整个config文件对应的结构
 type Config struct {
 	Addr        string       `yaml:"addr"`
-	User        string       `yaml:"user"`
-	Password    string       `yaml:"password"`
+	Ups         string       `yaml:"ups"`
 	LogPath     string       `yaml:"log_path"`
 	LogLevel    string       `yaml:"log_level"`
 	LogSql      string       `yaml:"log_sql"`

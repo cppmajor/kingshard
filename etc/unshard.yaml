@@ -1,6 +1,14 @@
 # server listen addr
 addr : 0.0.0.0:9696
 
+sql_monitor:
+  enable: true
+  mode: 1
+  success_only : false
+  cache_path : "/tmp/sql.cache"
+  chan_size : 1000
+  cache_size : 10000
+
 # server user and password
 user_list:
 -

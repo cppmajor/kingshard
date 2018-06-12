@@ -19,4 +19,6 @@ admin server(opt,k,v) values('change','log_sql','off')|close the log output
 admin server(opt,k,v) values('change','log_sql','on')|open the log output
 admin server(opt,k,v) values('change','slow_log_time','50')|set the slow_log_time
 admin server(opt,k,v) values('save','proxy','config')|save the kingshard config into 'ks.yaml'
+admin monitor(opt,k,v) values('sql_monitor','10','0')|show monitor stats, k = limit, v = offset
+admin monitor(opt,k,v) values('sql_monitor_reset','10','0')|show monitor stats and clear the results has been return, k = limit, v is not use
 admin help|show the admin command of kingshard

@@ -81,6 +81,12 @@
 			"revisionTime": "2016-08-06T12:27:52Z"
 		},
 		{
+			"checksumSHA1": "M0UdRpCVjXiuie7PfJQPZ/V1pVI=",
+			"path": "github.com/percona/go-mysql/query",
+			"revision": "d75edad1abf40f6d2e4b433f864cb8f68cfe28b7",
+			"revisionTime": "2018-05-28T13:12:16Z"
+		},
+		{
 			"checksumSHA1": "Ou99xuMbcqGvKsyrxqlvqZKZ0n4=",
 			"path": "github.com/tylerb/graceful",
 			"revision": "48afeb21e2fcbcff0f30bd5ad6b97747b0fae38e",

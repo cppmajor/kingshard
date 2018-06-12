@@ -32,6 +32,8 @@ type Config struct {
 	WebUser     string `yaml:"web_user"`
 	WebPassword string `yaml:"web_password"`
 
+	SqlMonitor SqlMonitorConfig `yaml:"sql_monitor"`
+
 	LogPath     string       `yaml:"log_path"`
 	LogLevel    string       `yaml:"log_level"`
 	LogSql      string       `yaml:"log_sql"`
@@ -42,6 +44,16 @@ type Config struct {
 	Nodes       []NodeConfig `yaml:"nodes"`
 
 	SchemaList []SchemaConfig `yaml:"schema_list"`
+}
+
+//sql_monitor对应的配置
+type SqlMonitorConfig struct {
+	Enable      bool   `yaml:"enable"`
+	Mode        int    `yaml:"mode"`
+	SuccessOnly bool   `yaml:"success_only"`
+	CachePath   string `yaml:"cache_path"`
+	CacheSize   int    `yaml:"cache_size"`
+	ChanSize    int    `yaml:"chan_size"`
 }
 
 //user_list对应的配置

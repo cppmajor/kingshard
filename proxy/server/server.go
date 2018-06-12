@@ -33,6 +33,7 @@ import (
 	"github.com/flike/kingshard/core/errors"
 	"github.com/flike/kingshard/core/golog"
 	"github.com/flike/kingshard/proxy/router"
+	"github.com/flike/kingshard/sqlmonitor"
 	"sync"
 )
 
@@ -74,6 +75,8 @@ type Server struct {
 
 	listener net.Listener
 	running  bool
+
+	monitor *sqlmonitor.SqlMonitor
 
 	configUpdateMutex sync.RWMutex
 	configVer         uint32
@@ -289,6 +292,12 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		}
 	}
 
+	if cfg.SqlMonitor.Enable {
+		s.monitor = new(sqlmonitor.SqlMonitor)
+		s.monitor.Start(cfg.SqlMonitor.Mode, cfg.SqlMonitor.CacheSize, cfg.SqlMonitor.ChanSize,
+			cfg.SqlMonitor.CachePath, cfg.SqlMonitor.SuccessOnly)
+	}
+
 	var err error
 	netProto := "tcp"
 
@@ -325,7 +334,7 @@ func (s *Server) newClientConn(co net.Conn) *ClientConn {
 	tcpConn.SetNoDelay(false)
 	c.c = tcpConn
 
-	func (){
+	func() {
 		s.configUpdateMutex.RLock()
 		defer s.configUpdateMutex.RUnlock()
 		c.nodes = s.nodes
@@ -645,6 +654,9 @@ func (s *Server) Run() error {
 
 func (s *Server) Close() {
 	s.running = false
+	if nil != s.monitor {
+		s.monitor.Stop()
+	}
 	if s.listener != nil {
 		s.listener.Close()
 	}
@@ -811,6 +823,29 @@ func (s *Server) UpdateConfig(newCfg *config.Config) {
 		if _, exist := newSchemas[user]; !exist {
 			golog.Error("Server", "UpdateConfig", fmt.Sprintf("user [%s] must have a schema", user), 0)
 			return
+		}
+	}
+
+	//update monitor config
+	if false == s.cfg.SqlMonitor.Enable && true == newCfg.SqlMonitor.Enable {
+		newMonitor := new(sqlmonitor.SqlMonitor)
+		newMonitor.Start(newCfg.SqlMonitor.Mode, newCfg.SqlMonitor.CacheSize, newCfg.SqlMonitor.ChanSize,
+			newCfg.SqlMonitor.CachePath, newCfg.SqlMonitor.SuccessOnly)
+		s.monitor = newMonitor
+	} else if true == s.cfg.SqlMonitor.Enable && false == newCfg.SqlMonitor.Enable {
+		s.monitor.Stop()
+	} else if true == s.cfg.SqlMonitor.Enable && true == newCfg.SqlMonitor.Enable {
+		if s.cfg.SqlMonitor.SuccessOnly != newCfg.SqlMonitor.SuccessOnly {
+			s.monitor.SetSuccessOnly(newCfg.SqlMonitor.SuccessOnly)
+		}
+		if s.cfg.SqlMonitor.CacheSize != newCfg.SqlMonitor.CacheSize {
+			s.monitor.SetCacheSize(newCfg.SqlMonitor.CacheSize)
+		}
+		if s.cfg.SqlMonitor.ChanSize != newCfg.SqlMonitor.ChanSize {
+			s.monitor.SetChanSize(newCfg.SqlMonitor.ChanSize)
+		}
+		if s.cfg.SqlMonitor.CachePath != newCfg.SqlMonitor.CachePath {
+			s.monitor.SetCachePath(newCfg.SqlMonitor.CachePath)
 		}
 	}
 

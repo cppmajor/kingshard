@@ -34,8 +34,9 @@ const (
 	Master = "master"
 	Slave  = "slave"
 
-	ServerRegion = "server"
-	NodeRegion   = "node"
+	ServerRegion  = "server"
+	NodeRegion    = "node"
+	MonitorRegion = "monitor"
 
 	//op
 	ADMIN_OPT_ADD     = "add"
@@ -56,10 +57,14 @@ const (
 
 	ADMIN_CONFIG = "config"
 	ADMIN_STATUS = "status"
+
+	ADMIN_SQL_MONITOR       = "sql_monitor"
+	ADMIN_SQL_MONITOR_RESET = "sql_monitor_reset"
 )
 
 var cmdServerOrder = []string{"opt", "k", "v"}
 var cmdNodeOrder = []string{"opt", "node", "k", "v"}
+var cmdMonitorOrder = []string{"opt", "k", "v"}
 
 func (c *ClientConn) handleNodeCmd(rows sqlparser.InsertRows) error {
 	var err error
@@ -168,6 +173,70 @@ func (c *ClientConn) handleServerCmd(rows sqlparser.InsertRows) (*mysql.Resultse
 	return result, nil
 }
 
+func (c *ClientConn) handleMonitorCmd(rows sqlparser.InsertRows) (*mysql.Resultset, error) {
+	var err error
+	var result *mysql.Resultset
+	var opt, limit, offset string
+
+	vals := rows.(sqlparser.Values)
+	if len(vals) == 0 {
+		return nil, errors.ErrCmdUnsupport
+	}
+
+	tuple := vals[0].(sqlparser.ValTuple)
+	if len(tuple) != len(cmdServerOrder) {
+		return nil, errors.ErrCmdUnsupport
+	}
+
+	opt = sqlparser.String(tuple[0])
+	opt = strings.Trim(opt, "'")
+
+	limit = sqlparser.String(tuple[1])
+	limit = strings.Trim(limit, "'")
+
+	offset = sqlparser.String(tuple[2])
+	offset = strings.Trim(offset, "'")
+
+	switch strings.ToLower(opt) {
+	case ADMIN_SQL_MONITOR:
+		var limitNum, offsetNum int64
+		limitNum, err = strconv.ParseInt(limit, 10, 32)
+		if nil != err {
+			golog.Error("ClientConn", "handleMonitorCmd", err.Error(),
+				c.connectionId, "opt", opt)
+			err = errors.ErrCmdUnsupport
+			break
+		}
+		offsetNum, err = strconv.ParseInt(offset, 10, 32)
+		if nil != err {
+			golog.Error("ClientConn", "handleMonitorCmd", err.Error(),
+				c.connectionId, "opt", opt)
+			err = errors.ErrCmdUnsupport
+			break
+		}
+		result, err = c.handleShowSqlMonitorStats(int(limitNum), int(offsetNum))
+	case ADMIN_SQL_MONITOR_RESET:
+		var limitNum int64
+		limitNum, err = strconv.ParseInt(limit, 10, 32)
+		if nil != err {
+			golog.Error("ClientConn", "handleMonitorCmd", err.Error(),
+				c.connectionId, "opt", opt)
+			err = errors.ErrCmdUnsupport
+			break
+		}
+		result, err = c.handleShowSqlMonitorResetStats(int(limitNum))
+	default:
+		err = errors.ErrCmdUnsupport
+		golog.Error("ClientConn", "handleMonitorCmd", err.Error(),
+			c.connectionId, "opt", opt)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 func (c *ClientConn) AddDatabase(nodeName string, role string, addr string) error {
 	//can not add a new master database
 	if role != Slave {
@@ -217,6 +286,8 @@ func (c *ClientConn) checkCmdOrder(region string, columns sqlparser.Columns) err
 		cmdOrder = cmdNodeOrder
 	case ServerRegion:
 		cmdOrder = cmdServerOrder
+	case MonitorRegion:
+		cmdOrder = cmdMonitorOrder
 	default:
 		return errors.ErrCmdUnsupport
 	}
@@ -305,6 +376,8 @@ func (c *ClientConn) handleAdmin(admin *sqlparser.Admin) error {
 		err = c.handleNodeCmd(admin.Rows)
 	case ServerRegion:
 		result, err = c.handleServerCmd(admin.Rows)
+	case MonitorRegion:
+		result, err = c.handleMonitorCmd(admin.Rows)
 	default:
 		return fmt.Errorf("admin %s not supported now", region)
 	}
@@ -414,7 +487,7 @@ func (c *ClientConn) handleShowProxyConfig() (*mysql.Resultset, error) {
 	for name := range c.schema.nodes {
 		nodeNames = append(nodeNames, name)
 	}
-	for user,_ := range c.proxy.users {
+	for user, _ := range c.proxy.users {
 		users = append(users, user)
 	}
 
@@ -701,4 +774,46 @@ func (c *ClientConn) handleAdminSave(k string, v string) error {
 	}
 
 	return errors.ErrCmdUnsupport
+}
+
+func (c *ClientConn) handleShowSqlMonitorStats(limit int, offset int) (*mysql.Resultset, error) {
+	if nil == c.proxy.monitor {
+		var names []string = []string{
+			"host_addr", "schema_name", "user_name",
+			"digest", "digest_text",
+			"count_star", "count_err",
+			"first_seen", "last_seen",
+			"sum_time", "min_time", "max_time",
+			"count_1ms", "count_10ms", "count_100ms", "count_1s", "count_5s", "count_others"}
+
+		var values [][]interface{} = make([][]interface{}, 0)
+		return c.buildResultset(nil, names, values)
+	}
+
+	names, values := c.proxy.monitor.GetQueryStats(limit, offset)
+	if 0 == len(values) {
+		return nil, nil
+	}
+	return c.buildResultset(nil, names, values)
+}
+
+func (c *ClientConn) handleShowSqlMonitorResetStats(limit int) (*mysql.Resultset, error) {
+	if nil == c.proxy.monitor {
+		var names []string = []string{
+			"host_addr", "schema_name", "user_name",
+			"digest", "digest_text",
+			"count_star", "count_err",
+			"first_seen", "last_seen",
+			"sum_time", "min_time", "max_time",
+			"count_1ms", "count_10ms", "count_100ms", "count_1s", "count_5s", "count_others"}
+
+		var values [][]interface{} = make([][]interface{}, 0)
+		return c.buildResultset(nil, names, values)
+	}
+
+	names, values := c.proxy.monitor.GetResetQueryStats(limit)
+	if 0 == len(values) {
+		return nil, nil
+	}
+	return c.buildResultset(nil, names, values)
 }

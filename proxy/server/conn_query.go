@@ -27,6 +27,7 @@ import (
 	"github.com/flike/kingshard/core/hack"
 	"github.com/flike/kingshard/mysql"
 	"github.com/flike/kingshard/proxy/router"
+	"github.com/flike/kingshard/sqlmonitor"
 	"github.com/flike/kingshard/sqlparser"
 )
 
@@ -208,6 +209,7 @@ func (c *ClientConn) executeInNode(conn *backend.BackendConn, sql string, args [
 	} else {
 		state = "OK"
 	}
+
 	execTime := float64(time.Now().UnixNano()-startTime) / float64(time.Millisecond)
 	if strings.ToLower(c.proxy.logSql[c.proxy.logSqlIndex]) != golog.LogSqlOff &&
 		execTime > float64(c.proxy.slowLogTime[c.proxy.slowLogTimeIndex]) {
@@ -218,6 +220,26 @@ func (c *ClientConn) executeInNode(conn *backend.BackendConn, sql string, args [
 			conn.GetAddr(),
 			sql,
 		)
+	}
+
+	if c.proxy.cfg.SqlMonitor.Enable {
+		execInfo := sqlmonitor.SqlExecInfo{
+			DBHost:      conn.GetAddr(),
+			SchemaName:  c.db,
+			UserName:    c.user,
+			Sql:         sql,
+			SeenTime:    startTime,
+			ExecTime:    execTime,
+			SuccessExec: true,
+		}
+
+		if nil != err {
+			execInfo.SuccessExec = false
+		}
+
+		if false == c.proxy.monitor.Record(execInfo) {
+			golog.Error("ClientConn", "executeInNodes", "monitor record failed", c.connectionId)
+		}
 	}
 
 	if err != nil {
@@ -274,6 +296,27 @@ func (c *ClientConn) executeInMultiNodes(conns map[string]*backend.BackendConn, 
 					v,
 				)
 			}
+
+			if c.proxy.cfg.SqlMonitor.Enable {
+				execInfo := sqlmonitor.SqlExecInfo{
+					DBHost:      co.GetAddr(),
+					SchemaName:  c.db,
+					UserName:    c.user,
+					Sql:         v,
+					SeenTime:    startTime,
+					ExecTime:    execTime,
+					SuccessExec: true,
+				}
+
+				if nil != err {
+					execInfo.SuccessExec = false
+				}
+
+				if false == c.proxy.monitor.Record(execInfo) {
+					golog.Error("ClientConn", "executeInMultiNodes", "monitor record failed", c.connectionId)
+				}
+			}
+
 			i++
 		}
 		wg.Done()

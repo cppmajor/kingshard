@@ -778,16 +778,7 @@ func (c *ClientConn) handleAdminSave(k string, v string) error {
 
 func (c *ClientConn) handleShowSqlMonitorStats(limit int, offset int) (*mysql.Resultset, error) {
 	if nil == c.proxy.monitor {
-		var names []string = []string{
-			"host_addr", "schema_name", "user_name",
-			"digest", "digest_text",
-			"count_star", "count_err",
-			"first_seen", "last_seen",
-			"sum_time", "min_time", "max_time",
-			"count_1ms", "count_10ms", "count_100ms", "count_1s", "count_5s", "count_others"}
-
-		var values [][]interface{} = make([][]interface{}, 0)
-		return c.buildResultset(nil, names, values)
+		return nil, nil
 	}
 
 	names, values := c.proxy.monitor.GetQueryStats(limit, offset)
@@ -799,16 +790,7 @@ func (c *ClientConn) handleShowSqlMonitorStats(limit int, offset int) (*mysql.Re
 
 func (c *ClientConn) handleShowSqlMonitorResetStats(limit int) (*mysql.Resultset, error) {
 	if nil == c.proxy.monitor {
-		var names []string = []string{
-			"host_addr", "schema_name", "user_name",
-			"digest", "digest_text",
-			"count_star", "count_err",
-			"first_seen", "last_seen",
-			"sum_time", "min_time", "max_time",
-			"count_1ms", "count_10ms", "count_100ms", "count_1s", "count_5s", "count_others"}
-
-		var values [][]interface{} = make([][]interface{}, 0)
-		return c.buildResultset(nil, names, values)
+		return nil, nil
 	}
 
 	names, values := c.proxy.monitor.GetResetQueryStats(limit)

@@ -72,11 +72,29 @@ func (c *ClientConn) handleStmtPrepare(sql string) error {
 
 	s.sql = sql
 
-	defaultRule := c.schema.rule.DefaultRule
+	var db string
+	var tableName string
+	switch stmt := s.s.(type) {
+	case *sqlparser.Select:
+		db, tableName = GetSelectDbAndTable(stmt)
+	case *sqlparser.Insert:
+		db, tableName = GetExecDbAndTable(stmt)
+	case *sqlparser.Update:
+		db, tableName = GetExecDbAndTable(stmt)
+	case *sqlparser.Delete:
+		db, tableName = GetExecDbAndTable(stmt)
+	case *sqlparser.Replace:
+		db, tableName = GetExecDbAndTable(stmt)
+	}
+	if "" == db {
+		db = c.db
+	}
 
-	n := c.proxy.GetNode(defaultRule.Nodes[0])
+	defaultRule := c.schema.rule.GetRule(db, tableName)
 
-	co, err := c.getBackendConn(n, false)
+	n := c.nodes[defaultRule.Nodes[0]]
+
+	co, err := c.getBackendConn(n, false, db)
 	defer c.closeConn(co, false)
 	if err != nil {
 		return fmt.Errorf("prepare error %s", err)
@@ -258,14 +276,19 @@ func (c *ClientConn) handleStmtExecute(data []byte) error {
 }
 
 func (c *ClientConn) handlePrepareSelect(stmt *sqlparser.Select, sql string, args []interface{}) error {
-	defaultRule := c.schema.rule.DefaultRule
+	db, tableName := GetSelectDbAndTable(stmt)
+	if "" == db {
+		db = c.db
+	}
+
+	defaultRule := c.schema.rule.GetRule(db, tableName)
 	if len(defaultRule.Nodes) == 0 {
 		return errors.ErrNoDefaultNode
 	}
-	defaultNode := c.proxy.GetNode(defaultRule.Nodes[0])
+	defaultNode := c.nodes[defaultRule.Nodes[0]]
 
 	//choose connection in slave DB first
-	conn, err := c.getBackendConn(defaultNode, true)
+	conn, err := c.getBackendConn(defaultNode, true, db)
 	defer c.closeConn(conn, false)
 	if err != nil {
 		return err
@@ -295,14 +318,19 @@ func (c *ClientConn) handlePrepareSelect(stmt *sqlparser.Select, sql string, arg
 }
 
 func (c *ClientConn) handlePrepareExec(stmt sqlparser.Statement, sql string, args []interface{}) error {
-	defaultRule := c.schema.rule.DefaultRule
+	db, tableName := GetExecDbAndTable(stmt)
+	if "" == db {
+		db = c.db
+	}
+
+	defaultRule := c.schema.rule.GetRule(db, tableName)
 	if len(defaultRule.Nodes) == 0 {
 		return errors.ErrNoDefaultNode
 	}
-	defaultNode := c.proxy.GetNode(defaultRule.Nodes[0])
+	defaultNode := c.nodes[defaultRule.Nodes[0]]
 
 	//execute in Master DB
-	conn, err := c.getBackendConn(defaultNode, false)
+	conn, err := c.getBackendConn(defaultNode, false, "")
 	defer c.closeConn(conn, false)
 	if err != nil {
 		return err
@@ -516,4 +544,65 @@ func (c *ClientConn) handleStmtClose(data []byte) error {
 	delete(c.stmts, id)
 
 	return nil
+}
+
+func GetSelectDbAndTable(stmt *sqlparser.Select)(db string, tableName string) {
+	switch v := (stmt.From[0]).(type) {
+	case *sqlparser.AliasedTableExpr:
+		subQuery := sqlparser.String(v.Expr)
+		if '(' == subQuery[0] && ')' == subQuery[len(subQuery)-1] { // select ... from (...) as table
+			subSql := strings.TrimSpace(subQuery[1:len(subQuery)-1])
+			subStmt, err := sqlparser.Parse(subSql) //解析subsql语句,得到的stmt是一个interface
+			if err != nil {
+				return
+			}
+			return GetSelectDbAndTable(subStmt.(*sqlparser.Select))
+		} else {
+			tableName = sqlparser.String(v.Expr)
+		}
+	case *sqlparser.JoinTableExpr:
+		if ate, ok := (v.LeftExpr).(*sqlparser.AliasedTableExpr); ok {
+			tableName = sqlparser.String(ate.Expr)
+		} else {
+			tableName = sqlparser.String(v)
+		}
+	default:
+		tableName = sqlparser.String(v)
+	}
+
+	arry := strings.Split(tableName, ".")
+	if len(arry) == 2 {
+		tableName = strings.Trim(arry[1], "`")
+		db = strings.Trim(arry[0], "`")
+	}
+
+	return
+}
+
+func GetExecDbAndTable(statement sqlparser.Statement)(db string, tableName string) {
+
+	switch statement.(type) {
+	case *sqlparser.Insert:
+		stmt := statement.(*sqlparser.Insert)
+		tableName = sqlparser.String(stmt.Table)
+	case *sqlparser.Update:
+		stmt := statement.(*sqlparser.Update)
+		tableName = sqlparser.String(stmt.Table)
+	case *sqlparser.Delete:
+		stmt := statement.(*sqlparser.Delete)
+		tableName = sqlparser.String(stmt.Table)
+	case *sqlparser.Replace:
+		stmt := statement.(*sqlparser.Replace)
+		tableName = sqlparser.String(stmt.Table)
+	default:
+		return
+	}
+
+	arry := strings.Split(tableName, ".")
+	if len(arry) == 2 {
+		tableName = strings.Trim(arry[1], "`")
+		db = strings.Trim(arry[0], "`")
+	}
+
+	return
 }

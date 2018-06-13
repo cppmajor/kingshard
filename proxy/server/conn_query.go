@@ -114,7 +114,7 @@ func (c *ClientConn) handleQuery(sql string) (err error) {
 	return nil
 }
 
-func (c *ClientConn) getBackendConn(n *backend.Node, fromSlave bool) (co *backend.BackendConn, err error) {
+func (c *ClientConn) getBackendConn(n *backend.Node, fromSlave bool, db string) (co *backend.BackendConn, err error) {
 	if !c.isInTransaction() {
 		if fromSlave {
 			co, err = n.GetSlaveConn()
@@ -151,10 +151,16 @@ func (c *ClientConn) getBackendConn(n *backend.Node, fromSlave bool) (co *backen
 		}
 	}
 
-	if err = co.UseDB(c.db); err != nil {
-		//reset the database to null
-		c.db = ""
-		return
+	if len(db) > 0 {
+		if err = co.UseDB(db); err != nil {
+			return
+		}
+	} else {
+		if err = co.UseDB(c.db); err != nil {
+			//reset the database to null
+			c.db = ""
+			return
+		}
 	}
 
 	if err = co.SetCharset(c.charset, c.collation); err != nil {
@@ -189,7 +195,7 @@ func (c *ClientConn) getShardConns(fromSlave bool, plan *router.Plan) (map[strin
 	conns := make(map[string]*backend.BackendConn)
 	var co *backend.BackendConn
 	for _, n := range nodes {
-		co, err = c.getBackendConn(n, fromSlave)
+		co, err = c.getBackendConn(n, fromSlave, "")
 		if err != nil {
 			break
 		}
@@ -225,7 +231,7 @@ func (c *ClientConn) executeInNode(conn *backend.BackendConn, sql string, args [
 	if c.proxy.cfg.SqlMonitor.Enable {
 		execInfo := sqlmonitor.SqlExecInfo{
 			DBHost:      conn.GetAddr(),
-			SchemaName:  c.db,
+			SchemaName:  conn.GetDB(),
 			UserName:    c.user,
 			Sql:         sql,
 			SeenTime:    startTime,
@@ -300,7 +306,7 @@ func (c *ClientConn) executeInMultiNodes(conns map[string]*backend.BackendConn, 
 			if c.proxy.cfg.SqlMonitor.Enable {
 				execInfo := sqlmonitor.SqlExecInfo{
 					DBHost:      co.GetAddr(),
-					SchemaName:  c.db,
+					SchemaName:  co.GetDB(),
 					UserName:    c.user,
 					Sql:         v,
 					SeenTime:    startTime,

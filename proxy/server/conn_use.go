@@ -32,19 +32,22 @@ func (c *ClientConn) handleUseDB(dbName string) error {
 		return mysql.NewDefaultError(mysql.ER_NO_DB_ERROR)
 	}
 
-	nodeName := c.schema.rule.DefaultRule.Nodes[0]
+	r := c.schema.rule.GetRule(dbName, "*")
+	if nil == r {
+		r = c.schema.rule.DefaultRule
+	}
+
+	nodeName := r.Nodes[0]
 
 	n := c.proxy.GetNode(nodeName)
 	//get the connection from slave preferentially
-	co, err = c.getBackendConn(n, true)
+	co, err = c.getBackendConn(n, true, dbName)
 	defer c.closeConn(co, false)
 	if err != nil {
 		return err
 	}
 
 	if err = co.UseDB(dbName); err != nil {
-		//reset the client database to null
-		c.db = ""
 		return err
 	}
 	c.db = dbName

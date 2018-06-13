@@ -26,6 +26,7 @@ import (
 
 var (
 	DefaultRuleType   = "default"
+	NormalRuleType    = "normal"
 	HashRuleType      = "hash"
 	RangeRuleType     = "range"
 	DateYearRuleType  = "date_year"
@@ -88,7 +89,7 @@ func (r *Rule) FindTableIndex(key interface{}) (int, error) {
 
 //UpdateExprs is the expression after set
 func (r *Rule) checkUpdateExprs(exprs sqlparser.UpdateExprs) error {
-	if r.Type == DefaultRuleType {
+	if r.Type == DefaultRuleType || r.Type == NormalRuleType {
 		return nil
 	} else if len(r.Nodes) == 1 {
 		return nil
@@ -153,6 +154,9 @@ func (r *Router) GetRule(db, table string) *Rule {
 	}
 	rule := r.Rules[db][table]
 	if rule == nil {
+		if startRule, ok := r.Rules[db]["*"]; ok {
+			return startRule
+		}
 		//set the database of default rule
 		r.DefaultRule.DB = db
 		return r.DefaultRule
@@ -327,7 +331,7 @@ func (r *Router) buildSelectPlan(db string, statement sqlparser.Statement) (*Pla
 		plan.RouteNodeIndexs = makeList(0, len(plan.Rule.Nodes))
 	}
 
-	if plan.Rule.Type != DefaultRuleType && len(plan.RouteTableIndexs) == 0 {
+	if !(plan.Rule.Type == DefaultRuleType || plan.Rule.Type == NormalRuleType) && len(plan.RouteTableIndexs) == 0 {
 		golog.Error("Route", "BuildSelectPlan", errors.ErrNoCriteria.Error(), 0)
 		return nil, errors.ErrNoCriteria
 	}
@@ -410,7 +414,7 @@ func (r *Router) buildUpdatePlan(db string, statement sqlparser.Statement) (*Pla
 		plan.RouteNodeIndexs = makeList(0, len(plan.Rule.Nodes))
 	}
 
-	if plan.Rule.Type != DefaultRuleType && len(plan.RouteTableIndexs) == 0 {
+	if !(plan.Rule.Type == DefaultRuleType || plan.Rule.Type == NormalRuleType) && len(plan.RouteTableIndexs) == 0 {
 		golog.Error("Route", "BuildUpdatePlan", errors.ErrNoCriteria.Error(), 0)
 		return nil, errors.ErrNoCriteria
 	}
@@ -444,7 +448,7 @@ func (r *Router) buildDeletePlan(db string, statement sqlparser.Statement) (*Pla
 		plan.RouteNodeIndexs = makeList(0, len(plan.Rule.Nodes))
 	}
 
-	if plan.Rule.Type != DefaultRuleType && len(plan.RouteTableIndexs) == 0 {
+	if !(plan.Rule.Type == DefaultRuleType || plan.Rule.Type == NormalRuleType) && len(plan.RouteTableIndexs) == 0 {
 		golog.Error("Route", "BuildDeletePlan", errors.ErrNoCriteria.Error(), 0)
 		return nil, errors.ErrNoCriteria
 	}
@@ -466,7 +470,7 @@ func (r *Router) buildTruncatePlan(db string, statement sqlparser.Statement) (*P
 	plan.RouteTableIndexs = plan.Rule.SubTableIndexs
 	plan.RouteNodeIndexs = makeList(0, len(plan.Rule.Nodes))
 
-	if plan.Rule.Type != DefaultRuleType && len(plan.RouteTableIndexs) == 0 {
+	if !(plan.Rule.Type == DefaultRuleType || plan.Rule.Type == NormalRuleType) && len(plan.RouteTableIndexs) == 0 {
 		golog.Error("Route", "buildTruncatePlan", errors.ErrNoCriteria.Error(), 0)
 		return nil, errors.ErrNoCriteria
 	}
@@ -660,6 +664,9 @@ func (r *Router) generateSelectSql(plan *Plan, stmt sqlparser.Statement) error {
 		buf := sqlparser.NewTrackedBuffer(nil)
 		stmt.Format(buf)
 		nodeName := r.Nodes[0]
+		if plan.Rule.Type == NormalRuleType {
+			nodeName = plan.Rule.Nodes[0]
+		}
 		sqls[nodeName] = []string{buf.String()}
 	} else {
 		tableCount := len(plan.RouteTableIndexs)
@@ -691,6 +698,9 @@ func (r *Router) generateInsertSql(plan *Plan, stmt sqlparser.Statement) error {
 		buf := sqlparser.NewTrackedBuffer(nil)
 		stmt.Format(buf)
 		nodeName := r.Nodes[0]
+		if plan.Rule.Type == NormalRuleType {
+			nodeName = plan.Rule.Nodes[0]
+		}
 		sqls[nodeName] = []string{buf.String()}
 	} else {
 		tableCount := len(plan.RouteTableIndexs)
@@ -731,6 +741,9 @@ func (r *Router) generateUpdateSql(plan *Plan, stmt sqlparser.Statement) error {
 		buf := sqlparser.NewTrackedBuffer(nil)
 		stmt.Format(buf)
 		nodeName := r.Nodes[0]
+		if plan.Rule.Type == NormalRuleType {
+			nodeName = plan.Rule.Nodes[0]
+		}
 		sqls[nodeName] = []string{buf.String()}
 	} else {
 		tableCount := len(plan.RouteTableIndexs)
@@ -774,6 +787,9 @@ func (r *Router) generateDeleteSql(plan *Plan, stmt sqlparser.Statement) error {
 		buf := sqlparser.NewTrackedBuffer(nil)
 		stmt.Format(buf)
 		nodeName := r.Nodes[0]
+		if plan.Rule.Type == NormalRuleType {
+			nodeName = plan.Rule.Nodes[0]
+		}
 		sqls[nodeName] = []string{buf.String()}
 	} else {
 		tableCount := len(plan.RouteTableIndexs)
@@ -816,6 +832,9 @@ func (r *Router) generateReplaceSql(plan *Plan, stmt sqlparser.Statement) error 
 		buf := sqlparser.NewTrackedBuffer(nil)
 		stmt.Format(buf)
 		nodeName := r.Nodes[0]
+		if plan.Rule.Type == NormalRuleType {
+			nodeName = plan.Rule.Nodes[0]
+		}
 		sqls[nodeName] = []string{buf.String()}
 	} else {
 		tableCount := len(plan.RouteTableIndexs)
@@ -859,6 +878,9 @@ func (r *Router) generateTruncateSql(plan *Plan, stmt sqlparser.Statement) error
 		buf := sqlparser.NewTrackedBuffer(nil)
 		stmt.Format(buf)
 		nodeName := r.Nodes[0]
+		if plan.Rule.Type == NormalRuleType {
+			nodeName = plan.Rule.Nodes[0]
+		}
 		sqls[nodeName] = []string{buf.String()}
 	} else {
 		tableCount := len(plan.RouteTableIndexs)

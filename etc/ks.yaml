@@ -145,3 +145,28 @@ schema_list :
         type: date_day
         nodes: [node1,node2]
         date_range: [20160306-20160307,20160308-20160309]
+
+    -
+        db: db_in_node1
+        table: "*"
+        nodes: [node1]
+        type: "normal"
+
+    -
+        db: db_in_node2
+        table: "*"
+        nodes: [node2]
+        type: "normal"
+
+    -
+        db: db_name_xxx
+        table: table_route_to_node1
+        nodes: [node1]
+        type: "normal"
+
+    -
+        db: db_name_xxx
+        table: table_route_to_node2
+        nodes: [node2]
+        type: "normal"
+

@@ -3,6 +3,7 @@ addr : 0.0.0.0:9696
 
 sql_monitor:
   enable: false
+  # mode "1":full asynchronous, no block; mode "2":asynchronous, block when chan full; mode "3":synchronous
   mode: 1
   success_only : false
   cache_path : "/tmp/sql.cache"
@@ -55,6 +56,10 @@ nodes :
 
     # default max conns for mysql server
     max_conns_limit : 32
+    init_conns_limit : 10
+
+    # close connections with idle time over this value (second)
+    idle_conns_time : 600
 
     # all mysql in a node must have the same user and password
     user :  root 
@@ -72,6 +77,10 @@ nodes :
 
     # default max conns for mysql server
     max_conns_limit : 32
+    init_conns_limit : 10
+
+    # close connections with idle time over this value (second)
+    idle_conns_time : 600
 
     # all mysql in a node must have the same user and password
     user :  root 

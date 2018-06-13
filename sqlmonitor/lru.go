@@ -20,6 +20,10 @@ type LRUCache struct {
 	// executed when an entry is purged from the cache.
 	OnEvicted func(key Key, value interface{})
 
+	// OnBeforeAdded optionally specificies a callback function to be
+	// executed when an entry is added to the cache.
+	OnValueUpdate func(key Key, valueOld interface{}, valueNew interface{}) interface{}
+
 	lock  sync.RWMutex
 	ll    *list.List
 	cache map[interface{}]*list.Element
@@ -66,9 +70,18 @@ func (c *LRUCache) Add(key Key, value interface{}) {
 	}
 	if ee, ok := c.cache[key]; ok {
 		c.ll.MoveToFront(ee)
-		ee.Value.(*entry).value = value
+		if nil == c.OnValueUpdate {
+			ee.Value.(*entry).value = value
+		} else {
+			ee.Value.(*entry).value = c.OnValueUpdate(key, ee.Value.(*entry).value, value)
+		}
 		return
 	}
+
+	if nil != c.OnValueUpdate {
+		value = c.OnValueUpdate(key, nil, value)
+	}
+
 	ele := c.ll.PushFront(&entry{key, value})
 	c.cache[key] = ele
 	if c.MaxEntries != 0 && c.ll.Len() > c.MaxEntries {

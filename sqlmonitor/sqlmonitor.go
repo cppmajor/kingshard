@@ -140,6 +140,9 @@ func (m *SqlMonitor) Start(mode int, cacheSize int, chanSize int, dataPath strin
 	m.sqlExecInfoChan = make(chan SqlExecInfo, chanSize)
 	m.dataPath = dataPath
 
+	m.sqlDigestCache.OnValueUpdate = OnValueUpdate
+	m.sqlDigestResetCache.OnValueUpdate = OnValueUpdate
+
 	m.recoverCacheFormFile()
 
 	if syncMode != m.mode {
@@ -316,78 +319,40 @@ func (m *SqlMonitor) statistics(sqlExecInfo *SqlExecInfo) {
 func addToCache(sqlDigestCache *LRUCache, sqlExecInfo *SqlExecInfo, sqlDigest string, sqlDigestText string) {
 	cacheKey := sqlExecInfo.DBHost + "," + sqlExecInfo.SchemaName + "," + sqlExecInfo.UserName + "," + sqlDigest
 
-	val, ok := sqlDigestCache.Get(cacheKey)
-	if !ok {
-		newStats := SqlStats{
-			hostAddr:   sqlExecInfo.DBHost,
-			schemaName: sqlExecInfo.SchemaName,
-			userName:   sqlExecInfo.UserName,
-			firstSeen:  sqlExecInfo.SeenTime,
-			lastSeen:   sqlExecInfo.SeenTime,
-			digest:     sqlDigest,
-			digestText: sqlDigestText,
-		}
-
-		newStats.countStar = 1
-		if !sqlExecInfo.SuccessExec {
-			newStats.countError = 1
-		}
-
-		newStats.maxTime = sqlExecInfo.ExecTime
-		newStats.minTime = sqlExecInfo.ExecTime
-		newStats.sumTime = sqlExecInfo.ExecTime
-
-		if 1.0 >= sqlExecInfo.ExecTime {
-			newStats.count1ms = 1
-		} else if 10.0 >= sqlExecInfo.ExecTime {
-			newStats.count10ms = 1
-		} else if 100.0 >= sqlExecInfo.ExecTime {
-			newStats.count100ms = 1
-		} else if 1000.0 >= sqlExecInfo.ExecTime {
-			newStats.count1s = 1
-		} else if 5000.0 >= sqlExecInfo.ExecTime {
-			newStats.count5s = 1
-		} else if 5000.0 < sqlExecInfo.ExecTime {
-			newStats.countOthers = 1
-		}
-
-		sqlDigestCache.Add(cacheKey, newStats)
+	newStats := SqlStats{
+		hostAddr:   sqlExecInfo.DBHost,
+		schemaName: sqlExecInfo.SchemaName,
+		userName:   sqlExecInfo.UserName,
+		firstSeen:  sqlExecInfo.SeenTime,
+		lastSeen:   sqlExecInfo.SeenTime,
+		digest:     sqlDigest,
+		digestText: sqlDigestText,
 	}
 
-	switch stats := val.(type) {
-	case SqlStats:
-		if sqlExecInfo.SeenTime > stats.lastSeen {
-			stats.lastSeen = sqlExecInfo.SeenTime
-		}
-
-		stats.countStar += 1
-		if !sqlExecInfo.SuccessExec {
-			stats.countError += 1
-		}
-
-		if sqlExecInfo.ExecTime > stats.maxTime {
-			stats.maxTime = sqlExecInfo.ExecTime
-		} else if sqlExecInfo.ExecTime < stats.minTime {
-			stats.minTime = sqlExecInfo.ExecTime
-		}
-		stats.sumTime += sqlExecInfo.ExecTime
-
-		if 1.0 >= sqlExecInfo.ExecTime {
-			stats.count1ms += 1
-		} else if 10.0 >= sqlExecInfo.ExecTime {
-			stats.count10ms += 1
-		} else if 100.0 >= sqlExecInfo.ExecTime {
-			stats.count100ms += 1
-		} else if 1000.0 >= sqlExecInfo.ExecTime {
-			stats.count1s += 1
-		} else if 5000.0 >= sqlExecInfo.ExecTime {
-			stats.count5s += 1
-		} else if 5000.0 < sqlExecInfo.ExecTime {
-			stats.countOthers += 1
-		}
-
-		sqlDigestCache.Add(cacheKey, stats)
+	newStats.countStar = 1
+	if !sqlExecInfo.SuccessExec {
+		newStats.countError = 1
 	}
+
+	newStats.maxTime = sqlExecInfo.ExecTime
+	newStats.minTime = sqlExecInfo.ExecTime
+	newStats.sumTime = sqlExecInfo.ExecTime
+
+	if 1.0 >= sqlExecInfo.ExecTime {
+		newStats.count1ms = 1
+	} else if 10.0 >= sqlExecInfo.ExecTime {
+		newStats.count10ms = 1
+	} else if 100.0 >= sqlExecInfo.ExecTime {
+		newStats.count100ms = 1
+	} else if 1000.0 >= sqlExecInfo.ExecTime {
+		newStats.count1s = 1
+	} else if 5000.0 >= sqlExecInfo.ExecTime {
+		newStats.count5s = 1
+	} else if 5000.0 < sqlExecInfo.ExecTime {
+		newStats.countOthers = 1
+	}
+
+	sqlDigestCache.Add(cacheKey, newStats)
 }
 
 func (m *SqlMonitor) saveCacheToFile() {
@@ -498,4 +463,38 @@ func (m *SqlMonitor) recoverCacheFormFile() {
 			m.sqlDigestCache.Add(cacheKey, stats)
 		}
 	}
+}
+
+func OnValueUpdate(key Key, valueOld interface{}, valueNew interface{}) interface{} {
+	if nil == valueOld {
+		return valueNew
+	}
+
+	switch stats := valueOld.(type) {
+	case SqlStats:
+		if valueNew.(SqlStats).lastSeen > stats.lastSeen {
+			stats.lastSeen = valueNew.(SqlStats).lastSeen
+		}
+
+		stats.countStar += valueNew.(SqlStats).countStar
+		stats.countError += valueNew.(SqlStats).countStar
+
+		if valueNew.(SqlStats).maxTime > stats.maxTime {
+			stats.maxTime = valueNew.(SqlStats).maxTime
+		}
+		if valueNew.(SqlStats).minTime < stats.minTime {
+			stats.minTime = valueNew.(SqlStats).minTime
+		}
+		stats.sumTime += valueNew.(SqlStats).sumTime
+
+		stats.count1ms += valueNew.(SqlStats).count1ms
+		stats.count10ms += valueNew.(SqlStats).count10ms
+		stats.count100ms += valueNew.(SqlStats).count100ms
+		stats.count1s += valueNew.(SqlStats).count1s
+		stats.count5s += valueNew.(SqlStats).count5s
+		stats.countOthers += valueNew.(SqlStats).countOthers
+		return stats
+	}
+
+	return valueNew
 }

@@ -67,6 +67,8 @@ type NodeConfig struct {
 	Name             string `yaml:"name"`
 	DownAfterNoAlive int    `yaml:"down_after_noalive"`
 	MaxConnNum       int    `yaml:"max_conns_limit"`
+	InitConnNum      int    `yaml:"init_conns_limit"`
+	IdleTime         int64  `yaml:"idle_conns_time"`
 
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`

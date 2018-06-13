@@ -55,6 +55,10 @@ nodes :
 
     # default max conns for mysql server
     max_conns_limit : 32
+    init_conns_limit : 10
+
+    # close connections with idle time over this value (second)
+    idle_conns_time : 600
 
     # all mysql in a node must have the same user and password
     user :  root

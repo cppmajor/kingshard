@@ -32,6 +32,7 @@ const (
 	InitConnCount           = 16
 	DefaultMaxConnNum       = 1024
 	PingPeroid        int64 = 4
+	ConnIDLETime      int64 = 300
 )
 
 type DB struct {
@@ -49,9 +50,12 @@ type DB struct {
 	cacheConns  chan *Conn
 	checkConn   *Conn
 	lastPing    int64
+
+	idelTime      int64
+	idleNextCheck int64
 }
 
-func Open(addr string, user string, password string, dbName string, maxConnNum int) (*DB, error) {
+func Open(addr string, user string, password string, dbName string, maxConnNum int, initConnNum int, idleTime int64) (*DB, error) {
 	var err error
 	db := new(DB)
 	db.addr = addr
@@ -59,12 +63,22 @@ func Open(addr string, user string, password string, dbName string, maxConnNum i
 	db.password = password
 	db.db = dbName
 
+	if 0 < idleTime {
+		db.idelTime = idleTime
+	} else {
+		db.idleNextCheck = ConnIDLETime
+	}
+
 	if 0 < maxConnNum {
 		db.maxConnNum = maxConnNum
-		if db.maxConnNum < 16 {
-			db.InitConnNum = db.maxConnNum
+		if initConnNum > maxConnNum || 0 >= initConnNum {
+			if db.maxConnNum < 16 {
+				db.InitConnNum = db.maxConnNum
+			} else {
+				db.InitConnNum = db.maxConnNum / 4
+			}
 		} else {
-			db.InitConnNum = db.maxConnNum / 4
+			db.InitConnNum = initConnNum
 		}
 	} else {
 		db.maxConnNum = DefaultMaxConnNum
@@ -96,6 +110,7 @@ func Open(addr string, user string, password string, dbName string, maxConnNum i
 		}
 	}
 	db.SetLastPing()
+	db.idleNextCheck = time.Now().Unix() + db.idelTime
 
 	return db, nil
 }
@@ -182,6 +197,49 @@ func (db *DB) Ping() error {
 		return err
 	}
 	return nil
+}
+
+func (db *DB) ClearIDLEConns() {
+	if time.Now().Unix() < db.idleNextCheck {
+		return
+	}
+
+	cacheConns, idleConns := db.getConns()
+	if nil == cacheConns || nil == idleConns {
+		return
+	}
+
+	cacheLen := len(cacheConns)
+	idleLen := len(idleConns)
+
+	if 2 >= cacheLen {
+		return
+	}
+
+	if db.InitConnNum >= db.maxConnNum-idleLen {
+		return
+	}
+
+	for i := 0; i < cacheLen; i++ {
+		select {
+		case co := <-cacheConns:
+			if db.idelTime <= time.Now().Unix()-co.pushTimestamp {
+				db.closeConn(co)
+			} else {
+				cacheConns <- co
+			}
+
+			if db.InitConnNum >= db.maxConnNum-len(idleConns) {
+				i = cacheLen //break for loop
+			}
+			break
+		case <-time.After(100 * time.Millisecond):
+			i = cacheLen //break for loop
+			break
+		}
+	}
+
+	db.idleNextCheck = time.Now().Unix() + db.idelTime/2
 }
 
 func (db *DB) newConn() (*Conn, error) {

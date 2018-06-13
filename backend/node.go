@@ -115,6 +115,8 @@ func (n *Node) checkMaster() {
 		if atomic.LoadInt32(&(db.state)) != ManualDown {
 			atomic.StoreInt32(&(db.state), Up)
 		}
+
+		db.ClearIDLEConns()
 		return
 	}
 
@@ -148,6 +150,8 @@ func (n *Node) checkSlave() {
 			if atomic.LoadInt32(&(slaves[i].state)) != ManualDown {
 				atomic.StoreInt32(&(slaves[i].state), Up)
 			}
+
+			slaves[i].ClearIDLEConns()
 			continue
 		}
 
@@ -234,7 +238,7 @@ func (n *Node) DeleteSlave(addr string) error {
 }
 
 func (n *Node) OpenDB(addr string) (*DB, error) {
-	db, err := Open(addr, n.Cfg.User, n.Cfg.Password, "", n.Cfg.MaxConnNum)
+	db, err := Open(addr, n.Cfg.User, n.Cfg.Password, "", n.Cfg.MaxConnNum, n.Cfg.InitConnNum, n.Cfg.IdleTime)
 	return db, err
 }
 

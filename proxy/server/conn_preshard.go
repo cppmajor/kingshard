@@ -31,6 +31,8 @@ type ExecuteDB struct {
 	ExecNode *backend.Node
 	IsSlave  bool
 	sql      string
+	DB       string
+	Table    string
 }
 
 func (c *ClientConn) isBlacklistSql(sql string) bool {
@@ -92,7 +94,7 @@ func (c *ClientConn) preHandleShard(sql string) (bool, error) {
 		return false, nil
 	}
 	//get connection in DB
-	conn, err := c.getBackendConn(executeDB.ExecNode, executeDB.IsSlave)
+	conn, err := c.getBackendConn(executeDB.ExecNode, executeDB.IsSlave, executeDB.DB)
 	defer c.closeConn(conn, false)
 	if err != nil {
 		return false, err
@@ -210,11 +212,17 @@ func (c *ClientConn) setExecuteNode(tokens []string, tokensLen int, executeDB *E
 	}
 
 	if executeDB.ExecNode == nil {
-		defaultRule := c.schema.rule.DefaultRule
-		if len(defaultRule.Nodes) == 0 {
+		var rule *router.Rule
+		if len(executeDB.DB) == 0 {
+			rule = c.schema.rule.GetRule(c.db, "*")
+		} else {
+			rule = c.schema.rule.GetRule(executeDB.DB, executeDB.Table)
+		}
+
+		if len(rule.Nodes) == 0 {
 			return errors.ErrNoDefaultNode
 		}
-		executeDB.ExecNode = c.proxy.GetNode(defaultRule.Nodes[0])
+		executeDB.ExecNode = c.proxy.GetNode(rule.Nodes[0])
 	}
 
 	return nil
@@ -242,6 +250,10 @@ func (c *ClientConn) getSelectExecDB(sql string, tokens []string, tokensLen int)
 					} else {
 						ruleDB = c.db
 					}
+
+					executeDB.DB = ruleDB
+					executeDB.Table = tableName
+
 					if router.GetRule(ruleDB, tableName) != router.DefaultRule {
 						return nil, nil
 					} else {
@@ -291,6 +303,10 @@ func (c *ClientConn) getDeleteExecDB(sql string, tokens []string, tokensLen int)
 					} else {
 						ruleDB = c.db
 					}
+
+					executeDB.DB = ruleDB
+					executeDB.Table = tableName
+
 					if router.GetRule(ruleDB, tableName) != router.DefaultRule {
 						return nil, nil
 					} else {
@@ -329,6 +345,10 @@ func (c *ClientConn) getInsertOrReplaceExecDB(sql string, tokens []string, token
 					} else {
 						ruleDB = c.db
 					}
+
+					executeDB.DB = ruleDB
+					executeDB.Table = tableName
+
 					if router.GetRule(ruleDB, tableName) != router.DefaultRule {
 						return nil, nil
 					} else {
@@ -366,6 +386,10 @@ func (c *ClientConn) getUpdateExecDB(sql string, tokens []string, tokensLen int)
 				} else {
 					ruleDB = c.db
 				}
+
+				executeDB.DB = ruleDB
+				executeDB.Table = tableName
+
 				if router.GetRule(ruleDB, tableName) != router.DefaultRule {
 					return nil, nil
 				} else {
@@ -463,7 +487,7 @@ func (c *ClientConn) handleShowColumns(sql string, tokens []string,
 				showRouter := c.schema.rule
 				showRule := showRouter.GetRule(ruleDB, tableName)
 				//this SHOW is sharding SQL
-				if showRule.Type != router.DefaultRuleType {
+				if !(showRule.Type == router.DefaultRuleType || showRule.Type == router.NormalRuleType) {
 					if 0 < len(showRule.SubTableIndexs) {
 						tableIndex := showRule.SubTableIndexs[0]
 						nodeIndex := showRule.TableToNode[tableIndex]

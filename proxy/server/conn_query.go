@@ -241,6 +241,7 @@ func (c *ClientConn) executeInNode(conn *backend.BackendConn, sql string, args [
 
 		if nil != err {
 			execInfo.SuccessExec = false
+			execInfo.ExecTime = 0
 		}
 
 		if false == c.proxy.monitor.Record(execInfo) {
@@ -316,6 +317,7 @@ func (c *ClientConn) executeInMultiNodes(conns map[string]*backend.BackendConn, 
 
 				if nil != err {
 					execInfo.SuccessExec = false
+					execInfo.ExecTime = 0
 				}
 
 				if false == c.proxy.monitor.Record(execInfo) {

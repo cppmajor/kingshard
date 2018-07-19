@@ -21,6 +21,7 @@ import (
 var (
 	ErrNoMasterConn  = errors.New("no master connection")
 	ErrNoSlaveConn   = errors.New("no slave connection")
+	ErrNoIdleConn   = errors.New("no idle connection")
 	ErrNoDefaultNode = errors.New("no default node")
 	ErrNoMasterDB    = errors.New("no master database")
 	ErrNoSlaveDB     = errors.New("no slave database")

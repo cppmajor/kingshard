@@ -69,6 +69,7 @@ type NodeConfig struct {
 	MaxConnNum       int    `yaml:"max_conns_limit"`
 	InitConnNum      int    `yaml:"init_conns_limit"`
 	IdleTime         int64  `yaml:"idle_conns_time"`
+	GetConnTimeout   int    `yaml:"get_conns_timeout"`
 
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`

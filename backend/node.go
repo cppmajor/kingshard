@@ -238,7 +238,8 @@ func (n *Node) DeleteSlave(addr string) error {
 }
 
 func (n *Node) OpenDB(addr string) (*DB, error) {
-	db, err := Open(addr, n.Cfg.User, n.Cfg.Password, "", n.Cfg.MaxConnNum, n.Cfg.InitConnNum, n.Cfg.IdleTime)
+	db, err := Open(addr, n.Cfg.User, n.Cfg.Password, "",
+		n.Cfg.MaxConnNum, n.Cfg.InitConnNum, n.Cfg.IdleTime, n.Cfg.GetConnTimeout)
 	return db, err
 }
 

@@ -33,6 +33,7 @@ const (
 	DefaultMaxConnNum       = 1024
 	PingPeroid        int64 = 4
 	ConnIDLETime      int64 = 300
+	GetConnTimeout          = 10000
 )
 
 type DB struct {
@@ -53,9 +54,11 @@ type DB struct {
 
 	idelTime      int64
 	idleNextCheck int64
+
+	getConnTimeout int
 }
 
-func Open(addr string, user string, password string, dbName string, maxConnNum int, initConnNum int, idleTime int64) (*DB, error) {
+func Open(addr string, user string, password string, dbName string, maxConnNum int, initConnNum int, idleTime int64, getConnTimeout int) (*DB, error) {
 	var err error
 	db := new(DB)
 	db.addr = addr
@@ -68,6 +71,13 @@ func Open(addr string, user string, password string, dbName string, maxConnNum i
 	} else {
 		db.idleNextCheck = ConnIDLETime
 	}
+
+	if 0 < getConnTimeout {
+		db.getConnTimeout = getConnTimeout
+	} else {
+		db.getConnTimeout = GetConnTimeout
+	}
+	println(db.getConnTimeout)
 
 	if 0 < maxConnNum {
 		db.maxConnNum = maxConnNum
@@ -365,6 +375,9 @@ func (db *DB) GetConnFromIdle(cacheConns, idleConns chan *Conn) (*Conn, error) {
 				return nil, errors.ErrBadConn
 			}
 		}
+	case <-time.After(time.Duration(db.getConnTimeout * 1000000)):
+		return nil, errors.ErrNoIdleConn
+
 	}
 	return co, nil
 }

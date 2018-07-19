@@ -54,7 +54,7 @@ type ClientConn struct {
 	nodes  map[string]*backend.Node
 	schema *Schema
 
-	txConns map[*backend.Node]*backend.BackendConn
+	txConns map[string]*backend.BackendConn
 
 	closed bool
 

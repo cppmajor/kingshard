@@ -77,7 +77,6 @@ func Open(addr string, user string, password string, dbName string, maxConnNum i
 	} else {
 		db.getConnTimeout = GetConnTimeout
 	}
-	println(db.getConnTimeout)
 
 	if 0 < maxConnNum {
 		db.maxConnNum = maxConnNum

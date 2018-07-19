@@ -292,6 +292,10 @@ func (c *ClientConn) checkCmdOrder(region string, columns sqlparser.Columns) err
 		return errors.ErrCmdUnsupport
 	}
 
+	if len(node) != len(cmdOrder) {
+		return errors.ErrCmdUnsupport
+	}
+
 	for i := 0; i < len(node); i++ {
 		val := sqlparser.String(node[i])
 		if val != cmdOrder[i] {

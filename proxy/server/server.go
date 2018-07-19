@@ -353,7 +353,7 @@ func (s *Server) newClientConn(co net.Conn) *ClientConn {
 
 	c.salt, _ = mysql.RandomBuf(20)
 
-	c.txConns = make(map[*backend.Node]*backend.BackendConn)
+	c.txConns = make(map[string]*backend.BackendConn)
 
 	c.closed = false
 

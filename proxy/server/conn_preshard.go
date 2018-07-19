@@ -155,7 +155,7 @@ func (c *ClientConn) GetTransExecDB(tokens []string, sql string) (*ExecuteDB, er
 		}
 		return executeDB, nil
 	}
-	if len(c.txConns) == 1 && c.txConns[executeDB.ExecNode] == nil {
+	if len(c.txConns) == 1 && c.txConns[executeDB.ExecNode.String()] == nil {
 		return nil, errors.ErrTransInMulti
 	}
 	return executeDB, nil

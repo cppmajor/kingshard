@@ -130,7 +130,7 @@ func (c *ClientConn) getBackendConn(n *backend.Node, fromSlave bool, db string) 
 		}
 	} else {
 		var ok bool
-		co, ok = c.txConns[n]
+		co, ok = c.txConns[n.String()]
 
 		if !ok {
 			if co, err = n.GetMasterConn(); err != nil {
@@ -147,7 +147,7 @@ func (c *ClientConn) getBackendConn(n *backend.Node, fromSlave bool, db string) 
 				}
 			}
 
-			c.txConns[n] = co
+			c.txConns[n.String()] = co
 		}
 	}
 
@@ -188,7 +188,7 @@ func (c *ClientConn) getShardConns(fromSlave bool, plan *router.Plan) (map[strin
 			return nil, errors.ErrTransInMulti
 		}
 		//exec in multi node
-		if len(c.txConns) == 1 && c.txConns[nodes[0]] == nil {
+		if len(c.txConns) == 1 && c.txConns[nodes[0].String()] == nil {
 			return nil, errors.ErrTransInMulti
 		}
 	}

@@ -27,7 +27,7 @@ type SqlStats struct {
 		schema_name
 			- the schema that is currently being queried
 		user_name
-			- the username with which the MySQL client connected to ProxySQL
+			- the username with which the MySQL client connected to proxy
 		digest
 			- a hexadecimal hash that uniquely represents a query with its parameters stripped
 		digest_text
@@ -477,7 +477,7 @@ func OnValueUpdate(key Key, valueOld interface{}, valueNew interface{}) interfac
 		}
 
 		stats.countStar += valueNew.(SqlStats).countStar
-		stats.countError += valueNew.(SqlStats).countStar
+		stats.countError += valueNew.(SqlStats).countError
 
 		if valueNew.(SqlStats).maxTime > stats.maxTime {
 			stats.maxTime = valueNew.(SqlStats).maxTime

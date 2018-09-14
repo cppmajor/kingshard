@@ -392,10 +392,19 @@ func (s *Server) onConn(c net.Conn) {
 		conn.Close()
 		return
 	}
-	if err := conn.Handshake(); err != nil {
+
+	handshakeType, err := conn.Handshake()
+	if err != nil {
 		golog.Error("server", "onConn", err.Error(), 0)
 		conn.writeError(err)
 		conn.Close()
+		return
+	}
+
+	//health check
+	if 1 == handshakeType {
+		golog.Debug("server", "onConn", "healtch check ok", 0)
+		conn.RunHealthCheck()
 		return
 	}
 

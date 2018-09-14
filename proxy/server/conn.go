@@ -96,29 +96,40 @@ func (c *ClientConn) IsAllowConnect() bool {
 	return false
 }
 
-func (c *ClientConn) Handshake() error {
+//return value int, 0 -> normal handshake, 1 -> health check
+func (c *ClientConn) Handshake() (int, error) {
 	if err := c.writeInitialHandshake(); err != nil {
 		golog.Error("server", "Handshake", err.Error(),
 			c.connectionId, "msg", "send initial handshake error")
-		return err
+		return 0, err
 	}
 
-	if err := c.readHandshakeResponse(); err != nil {
+	data, err := c.readPacket()
+	if err != nil {
+		return 0, err
+	}
+
+	//health check
+	if 8 == len(data) && 0 == binary.LittleEndian.Uint32(data[:4]) && 0 == binary.LittleEndian.Uint32(data[4:8]) {
+		return 1, nil
+	}
+
+	if err := c.readHandshakeResponse(data); err != nil {
 		golog.Error("server", "readHandshakeResponse",
 			err.Error(), c.connectionId,
 			"msg", "read Handshake Response error")
-		return err
+		return 0, err
 	}
 
 	if err := c.writeOK(nil); err != nil {
 		golog.Error("server", "readHandshakeResponse",
 			"write ok fail",
 			c.connectionId, "error", err.Error())
-		return err
+		return 0, err
 	}
 
 	c.pkg.Sequence = 0
-	return nil
+	return 0, nil
 }
 
 func (c *ClientConn) Close() error {
@@ -131,6 +142,10 @@ func (c *ClientConn) Close() error {
 	c.closed = true
 
 	return nil
+}
+
+func (c *ClientConn) responseHealthCheck() error {
+	return c.writeInitialHandshake()
 }
 
 func (c *ClientConn) writeInitialHandshake() error {
@@ -192,11 +207,15 @@ func (c *ClientConn) writePacketBatch(total, data []byte, direct bool) ([]byte, 
 	return c.pkg.WritePacketBatch(total, data, direct)
 }
 
-func (c *ClientConn) readHandshakeResponse() error {
-	data, err := c.readPacket()
+func (c *ClientConn) readHandshakeResponse(data []byte) error {
+	//data, err := c.readPacket()
+	//if err != nil {
+	//	return err
+	//}
 
-	if err != nil {
-		return err
+	//health check
+	if 8 == len(data) && 0 == binary.LittleEndian.Uint32(data[:4]) && 0 == binary.LittleEndian.Uint32(data[4:8]) {
+		return nil
 	}
 
 	pos := 0
@@ -262,6 +281,48 @@ func (c *ClientConn) readHandshakeResponse() error {
 	c.db = db
 
 	return nil
+}
+
+func (c *ClientConn) RunHealthCheck() {
+	defer func() {
+		r := recover()
+		if err, ok := r.(error); ok {
+			const size = 4096
+			buf := make([]byte, size)
+			buf = buf[:runtime.Stack(buf, false)]
+
+			golog.Error("ClientConn", "RunHealthCheck",
+				err.Error(), 0,
+				"stack", string(buf))
+		}
+
+		c.Close()
+	}()
+
+	for {
+		c.responseHealthCheck()
+
+		c.pkg.Sequence = 1
+		data, err := c.readPacket()
+
+		if err != nil {
+			return
+		}
+
+		//health check
+		if 8 == len(data) && 0 == binary.LittleEndian.Uint32(data[:4]) && 0 == binary.LittleEndian.Uint32(data[4:8]) {
+			golog.Debug("ClientConn", "RunHealthCheck", "healtch check ok", 0)
+
+		} else {
+			golog.Debug("ClientConn", "RunHealthCheck", "healtch check bad packet", 0)
+			return
+		}
+
+		if c.closed {
+			return
+		}
+
+	}
 }
 
 func (c *ClientConn) Run() {

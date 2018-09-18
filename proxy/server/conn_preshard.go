@@ -27,6 +27,10 @@ import (
 	"github.com/flike/kingshard/sqlparser"
 )
 
+const (
+	NormalRuleType  = "normal"
+)
+
 type ExecuteDB struct {
 	ExecNode *backend.Node
 	IsSlave  bool
@@ -189,14 +193,14 @@ func (c *ClientConn) GetExecDB(tokens []string, sql string) (*ExecuteDB, error) 
 	}
 	executeDB := new(ExecuteDB)
 	executeDB.sql = sql
-	err := c.setExecuteNode(tokens, tokensLen, executeDB)
+	err := c.setExecuteNode(tokens, tokensLen, executeDB, nil)
 	if err != nil {
 		return nil, err
 	}
 	return executeDB, nil
 }
 
-func (c *ClientConn) setExecuteNode(tokens []string, tokensLen int, executeDB *ExecuteDB) error {
+func (c *ClientConn) setExecuteNode(tokens []string, tokensLen int, executeDB *ExecuteDB, rule *router.Rule) error {
 	if 2 <= tokensLen {
 		//for /*node1*/
 		if 1 < len(tokens) && tokens[0][0] == mysql.COMMENT_PREFIX {
@@ -212,11 +216,13 @@ func (c *ClientConn) setExecuteNode(tokens []string, tokensLen int, executeDB *E
 	}
 
 	if executeDB.ExecNode == nil {
-		var rule *router.Rule
-		if len(executeDB.DB) == 0 {
-			rule = c.schema.rule.GetRule(c.db, "*")
-		} else {
-			rule = c.schema.rule.GetRule(executeDB.DB, executeDB.Table)
+		//var rule *router.Rule
+		if nil == rule {
+			if len(executeDB.DB) == 0 {
+				rule = c.schema.rule.GetRule(c.db, "*")
+			} else {
+				rule = c.schema.rule.GetRule(executeDB.DB, executeDB.Table)
+			}
 		}
 
 		if len(rule.Nodes) == 0 {
@@ -230,6 +236,7 @@ func (c *ClientConn) setExecuteNode(tokens []string, tokensLen int, executeDB *E
 
 //get the execute database for select sql
 func (c *ClientConn) getSelectExecDB(sql string, tokens []string, tokensLen int) (*ExecuteDB, error) {
+	var rule *router.Rule
 	var ruleDB string
 	executeDB := new(ExecuteDB)
 	executeDB.sql = sql
@@ -243,6 +250,12 @@ func (c *ClientConn) getSelectExecDB(sql string, tokens []string, tokensLen int)
 		for i := 1; i < tokensLen; i++ {
 			if strings.ToLower(tokens[i]) == mysql.TK_STR_FROM {
 				if i+1 < tokensLen {
+
+					// select ... from ( ... ) T
+					if '(' == strings.ToLower(tokens[i+1])[0] {
+						continue
+					}
+
 					DBName, tableName := sqlparser.GetDBTable(tokens[i+1])
 					//if the token[i+1] like this:kingshard.test_shard_hash
 					if DBName != "" {
@@ -254,7 +267,12 @@ func (c *ClientConn) getSelectExecDB(sql string, tokens []string, tokensLen int)
 					executeDB.DB = ruleDB
 					executeDB.Table = tableName
 
-					if router.GetRule(ruleDB, tableName) != router.DefaultRule {
+					rule = router.GetRule(ruleDB, tableName)
+					if NormalRuleType == rule.Type {
+						//if the table is not shard table,send the sql
+						//to normal db
+						break
+					} else if rule != router.DefaultRule {
 						return nil, nil
 					} else {
 						//if the table is not shard table,send the sql
@@ -276,7 +294,7 @@ func (c *ClientConn) getSelectExecDB(sql string, tokens []string, tokensLen int)
 			executeDB.IsSlave = false
 		}
 	}
-	err := c.setExecuteNode(tokens, tokensLen, executeDB)
+	err := c.setExecuteNode(tokens, tokensLen, executeDB, rule)
 	if err != nil {
 		return nil, err
 	}
@@ -285,6 +303,7 @@ func (c *ClientConn) getSelectExecDB(sql string, tokens []string, tokensLen int)
 
 //get the execute database for delete sql
 func (c *ClientConn) getDeleteExecDB(sql string, tokens []string, tokensLen int) (*ExecuteDB, error) {
+	var rule *router.Rule
 	var ruleDB string
 	executeDB := new(ExecuteDB)
 	executeDB.sql = sql
@@ -307,7 +326,10 @@ func (c *ClientConn) getDeleteExecDB(sql string, tokens []string, tokensLen int)
 					executeDB.DB = ruleDB
 					executeDB.Table = tableName
 
-					if router.GetRule(ruleDB, tableName) != router.DefaultRule {
+					rule = router.GetRule(ruleDB, tableName)
+					if NormalRuleType == rule.Type {
+						break
+					} else if rule != router.DefaultRule {
 						return nil, nil
 					} else {
 						break
@@ -317,7 +339,7 @@ func (c *ClientConn) getDeleteExecDB(sql string, tokens []string, tokensLen int)
 		}
 	}
 
-	err := c.setExecuteNode(tokens, tokensLen, executeDB)
+	err := c.setExecuteNode(tokens, tokensLen, executeDB, rule)
 	if err != nil {
 		return nil, err
 	}
@@ -327,6 +349,7 @@ func (c *ClientConn) getDeleteExecDB(sql string, tokens []string, tokensLen int)
 
 //get the execute database for insert or replace sql
 func (c *ClientConn) getInsertOrReplaceExecDB(sql string, tokens []string, tokensLen int) (*ExecuteDB, error) {
+	var rule *router.Rule
 	var ruleDB string
 	executeDB := new(ExecuteDB)
 	executeDB.sql = sql
@@ -349,7 +372,10 @@ func (c *ClientConn) getInsertOrReplaceExecDB(sql string, tokens []string, token
 					executeDB.DB = ruleDB
 					executeDB.Table = tableName
 
-					if router.GetRule(ruleDB, tableName) != router.DefaultRule {
+					rule = router.GetRule(ruleDB, tableName)
+					if NormalRuleType == rule.Type {
+						break
+					} else if rule != router.DefaultRule {
 						return nil, nil
 					} else {
 						break
@@ -359,7 +385,7 @@ func (c *ClientConn) getInsertOrReplaceExecDB(sql string, tokens []string, token
 		}
 	}
 
-	err := c.setExecuteNode(tokens, tokensLen, executeDB)
+	err := c.setExecuteNode(tokens, tokensLen, executeDB, rule)
 	if err != nil {
 		return nil, err
 	}
@@ -369,6 +395,7 @@ func (c *ClientConn) getInsertOrReplaceExecDB(sql string, tokens []string, token
 
 //get the execute database for update sql
 func (c *ClientConn) getUpdateExecDB(sql string, tokens []string, tokensLen int) (*ExecuteDB, error) {
+	var rule *router.Rule
 	var ruleDB string
 	executeDB := new(ExecuteDB)
 	executeDB.sql = sql
@@ -390,7 +417,10 @@ func (c *ClientConn) getUpdateExecDB(sql string, tokens []string, tokensLen int)
 				executeDB.DB = ruleDB
 				executeDB.Table = tableName
 
-				if router.GetRule(ruleDB, tableName) != router.DefaultRule {
+				rule = router.GetRule(ruleDB, tableName)
+				if NormalRuleType == rule.Type {
+					break
+				} else if rule != router.DefaultRule {
 					return nil, nil
 				} else {
 					break
@@ -399,7 +429,7 @@ func (c *ClientConn) getUpdateExecDB(sql string, tokens []string, tokensLen int)
 		}
 	}
 
-	err := c.setExecuteNode(tokens, tokensLen, executeDB)
+	err := c.setExecuteNode(tokens, tokensLen, executeDB, rule)
 	if err != nil {
 		return nil, err
 	}
@@ -435,7 +465,7 @@ func (c *ClientConn) getSetExecDB(sql string, tokens []string, tokensLen int) (*
 		}
 	}
 
-	err := c.setExecuteNode(tokens, tokensLen, executeDB)
+	err := c.setExecuteNode(tokens, tokensLen, executeDB, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -457,7 +487,7 @@ func (c *ClientConn) getShowExecDB(sql string, tokens []string, tokensLen int) (
 		return nil, err
 	}
 
-	err = c.setExecuteNode(tokens, tokensLen, executeDB)
+	err = c.setExecuteNode(tokens, tokensLen, executeDB, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -507,6 +537,7 @@ func (c *ClientConn) handleShowColumns(sql string, tokens []string,
 //get the execute database for truncate sql
 //sql: TRUNCATE [TABLE] tbl_name
 func (c *ClientConn) getTruncateExecDB(sql string, tokens []string, tokensLen int) (*ExecuteDB, error) {
+	var rule *router.Rule
 	var ruleDB string
 	executeDB := new(ExecuteDB)
 	executeDB.sql = sql
@@ -521,13 +552,15 @@ func (c *ClientConn) getTruncateExecDB(sql string, tokens []string, tokensLen in
 		} else {
 			ruleDB = c.db
 		}
-		if router.GetRule(ruleDB, tableName) != router.DefaultRule {
+
+		rule = router.GetRule(ruleDB, tableName)
+		if rule != router.DefaultRule && NormalRuleType != rule.Type {
 			return nil, nil
 		}
 
 	}
 
-	err := c.setExecuteNode(tokens, tokensLen, executeDB)
+	err := c.setExecuteNode(tokens, tokensLen, executeDB, rule)
 	if err != nil {
 		return nil, err
 	}

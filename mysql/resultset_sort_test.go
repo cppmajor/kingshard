@@ -12,9 +12,8 @@
 // License for the specific language governing permissions and limitations
 // under the License.
 
-// test
 // test_randdom:***REMOVED***
-// test 3
+// test 4
 
 package mysql
 

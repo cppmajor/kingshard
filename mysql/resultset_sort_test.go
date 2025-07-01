@@ -14,6 +14,7 @@
 
 // test
 // test_randdom:***REMOVED***
+// test 3
 
 package mysql
 

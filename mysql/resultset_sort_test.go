@@ -13,6 +13,7 @@
 // under the License.
 
 // test_randdom:***REMOVED***
+// test_randdom2:***REMOVED***
 // test 4
 
 package mysql
